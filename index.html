@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>マックのポテト・マスター・シミュレーター</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes sizzle {
+            0%, 100% { transform: translateY(0) scale(1) rotate(0deg); }
+            50% { transform: translateY(-2px) scale(1.02) rotate(0.5deg); }
+        }
+        .animate-sizzle { animation: sizzle 0.15s infinite; }
+        
+        .progress-fill { transition: width 0.1s linear; }
+        
+        @keyframes shake-gentle {
+            0%, 100% { transform: translate(0, 0); }
+            25% { transform: translate(-3px, 3px); }
+            75% { transform: translate(3px, -3px); }
+        }
+        .animate-shake { animation: shake-gentle 0.15s infinite; }
+
+        .floating-target {
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* 揚げ色のグラデーション：生(明るい黄) -> 成功(黄金) -> 焦げ(茶) */
+        .fry-color-scale {
+            background: linear-gradient(90deg, #fef9c3 0%, #facc15 50%, #854d0e 100%);
+        }
+
+        /* 成功ゾーンのアニメーション */
+        @keyframes pulse-success {
+            0%, 100% { background-color: rgba(34, 197, 94, 0.4); }
+            50% { background-color: rgba(34, 197, 94, 0.7); }
+        }
+        .animate-success-zone { animation: pulse-success 1s infinite; }
+    </style>
+</head>
+<body class="bg-yellow-50 min-h-screen font-sans text-gray-800 overflow-hidden select-none">
+    <div id="app" class="max-w-md mx-auto min-h-screen flex flex-col p-4 touch-none">
+        <!-- Header -->
+        <header class="text-center py-4">
+            <h1 class="text-3xl font-black text-red-600 italic tracking-tighter flex items-center justify-center gap-2">
+                🍟 POTATO MASTER PRO
+            </h1>
+            <p class="text-[10px] text-red-400 font-bold uppercase tracking-widest">Handcrafted Quality Simulation</p>
+        </header>
+
+        <!-- Main Game Area -->
+        <div id="game-card" class="flex-grow flex flex-col bg-white rounded-[3rem] shadow-2xl p-6 border-4 border-red-600 relative my-2 overflow-hidden">
+            <!-- Step Info -->
+            <div class="flex justify-between items-center mb-4">
+                <span id="step-number" class="bg-red-600 text-white text-xs font-black px-4 py-1 rounded-full shadow-md">STEP 01</span>
+                <div id="life-container" class="flex gap-1 text-red-500 text-lg tracking-tighter drop-shadow-sm">❤️❤️❤️</div>
+            </div>
+
+            <!-- Visual Stage -->
+            <div id="visual-stage" class="w-full h-52 flex items-center justify-center relative mb-4 bg-red-50 rounded-[2rem] overflow-hidden border-2 border-red-100 shadow-inner">
+                <!-- SVG Content Injected Here -->
+            </div>
+
+            <!-- UI Text -->
+            <div class="text-center mb-4 h-24 flex flex-col justify-center bg-gray-50/50 rounded-2xl p-2">
+                <h2 id="task-name" class="text-xl font-black text-gray-800 mb-1 leading-tight">...</h2>
+                <p id="task-hint" class="text-xs text-red-500 font-bold italic font-sans">...</p>
+            </div>
+
+            <!-- Interaction Area -->
+            <div id="interaction-box" class="relative w-full h-44 flex flex-col items-center justify-center bg-gray-100 rounded-[2.5rem] border-2 border-dashed border-gray-300 overflow-hidden shadow-inner">
+                <div id="progress-container" class="absolute top-0 left-0 w-full h-2.5 bg-gray-200">
+                    <div id="task-bar" class="h-full bg-yellow-400 progress-fill shadow-[0_0_10px_rgba(250,204,21,0.5)]" style="width: 0%"></div>
+                </div>
+                
+                <!-- Dynamic Input Content -->
+                <div id="input-area" class="w-full h-full flex items-center justify-center relative"></div>
+            </div>
+        </div>
+
+        <!-- Result Overlay -->
+        <div id="overlay" class="hidden fixed inset-0 bg-red-600/95 flex items-center justify-center z-50 p-6 backdrop-blur-sm">
+            <div class="bg-white rounded-[3.5rem] p-10 text-center w-full max-w-sm border-4 border-yellow-400 shadow-[0_20px_50px_rgba(0,0,0,0.3)]">
+                <div id="result-emoji" class="text-8xl mb-4 drop-shadow-lg">🍟</div>
+                <h3 id="result-title" class="text-3xl font-black text-red-600 mb-2 italic tracking-tighter uppercase">Excellent</h3>
+                <p id="result-desc" class="text-gray-600 mb-8 font-bold text-sm leading-relaxed"></p>
+                <button id="next-btn" class="w-full bg-red-600 text-white font-black py-5 rounded-2xl shadow-[0_6px_0_0_#991b1b] active:shadow-none active:translate-y-1 transition-all uppercase tracking-[0.2em] text-lg">
+                    Next Phase
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const steps = [
+            {
+                id: "wash",
+                name: "徹底ゴシゴシ洗浄！",
+                hint: "泥がなくなるまで【押しながら左右にスライド】！",
+                action: "slide",
+                goal: 200,
+                icon: (p) => `<svg viewBox="0 0 200 200" class="w-44 h-44">
+                    <path d="M60 110 C 60 70, 140 70, 140 110 C 140 150, 60 150, 60 110" fill="#D2B48C" stroke="#A67C52" stroke-width="2" />
+                    <circle cx="85" cy="100" r="8" fill="#543310" opacity="${Math.max(0, 1 - p/50)}" />
+                    <circle cx="120" cy="125" r="10" fill="#543310" opacity="${Math.max(0, 1 - p/100)}" />
+                    <circle cx="100" cy="135" r="6" fill="#543310" opacity="${Math.max(0, 1 - p/150)}" />
+                    <circle cx="115" cy="95" r="7" fill="#543310" opacity="${Math.max(0, 1 - p/200)}" />
+                    ${isPressing ? `
+                        <circle cx="70" cy="80" r="8" fill="white" opacity="0.6" class="animate-bounce" />
+                        <circle cx="130" cy="85" r="5" fill="white" opacity="0.4" class="animate-pulse" />
+                    ` : ''}
+                </svg>`
+            },
+            {
+                id: "cut",
+                name: "連続高速スライス！",
+                hint: "矢印の方向に【スワイプ】して12本切り出せ！",
+                action: "swipe",
+                goal: 12,
+                icon: (p, extra) => {
+                    return `<svg viewBox="0 0 200 200" class="w-44 h-44">
+                        <rect x="20" y="130" width="160" height="10" fill="#E5E7EB" rx="2" />
+                        ${p < 12 ? `<path d="M${30 + p*8} 100 C ${30 + p*8} 70, 130 70, 130 100 C 130 130, ${30 + p*8} 130, ${30 + p*8} 100" fill="#D2B48C" stroke="#A67C52" />` : ''}
+                        ${Array.from({length: p}).map((_, i) => `
+                            <rect x="${140 + (i%4)*4}" y="${120 - Math.floor(i/4)*8}" width="4" height="25" fill="#facc15" stroke="#A67C52" stroke-width="0.5" transform="rotate(${i*10} ${140 + (i%4)*4} ${120 - Math.floor(i/4)*8})"/>
+                        `).join('')}
+                        <g transform="translate(100, 45)">
+                            <circle r="25" fill="#EF4444" />
+                            <text text-anchor="middle" dy="12" font-size="35" fill="white" font-weight="900">${extra || ''}</text>
+                        </g>
+                    </svg>`
+                }
+            },
+            {
+                id: "fry",
+                name: "職人の揚げ加減",
+                hint: "針が緑の【GOODゾーン】で引き上げろ！",
+                action: "cook",
+                goal: 3,
+                icon: (p, extra) => {
+                    // ポテトの色の計算 (白っぽさから黄金色へ)
+                    let r, g, b;
+                    if (p < 0.6) { 
+                        const factor = p / 0.6;
+                        r = 255; g = 250 - (factor * 50); b = 240 - (factor * 220);
+                    } else { 
+                        const factor = (p - 0.6) / 0.4;
+                        r = 255 - (factor * 120); g = 200 - (factor * 120); b = 20 - (factor * 10);
+                    }
+                    const potatoColor = `rgb(${r},${g},${b})`;
+                    
+                    return `<svg viewBox="0 0 200 200" class="w-44 h-44">
+                        <!-- フライヤーの鍋 -->
+                        <rect x="40" y="100" width="120" height="70" fill="#cbd5e1" rx="10" stroke="#94a3b8" stroke-width="2"/>
+                        <!-- 綺麗な油の色 -->
+                        <rect x="45" y="105" width="110" height="60" fill="url(#oilGradient)" rx="6" />
+                        <defs>
+                            <linearGradient id="oilGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" style="stop-color:#fef08a;stop-opacity:0.8" />
+                                <stop offset="100%" style="stop-color:#eab308;stop-opacity:0.9" />
+                            </linearGradient>
+                        </defs>
+                        <!-- 揚げられているポテト -->
+                        <g class="animate-sizzle">
+                            ${Array.from({length: 10}).map((_, i) => `
+                                <rect x="${58 + i*9}" y="${85 + (i%3)*4}" width="4" height="45" fill="${potatoColor}" rx="1" stroke="rgba(0,0,0,0.05)"/>
+                            `).join('')}
+                        </g>
+                        <!-- 泡の表現 -->
+                        <g opacity="0.6">
+                            <circle cx="70" cy="120" r="3" fill="white" class="animate-ping" />
+                            <circle cx="100" cy="140" r="2" fill="white" style="animation-delay: 0.2s" class="animate-ping" />
+                            <circle cx="130" cy="115" r="4" fill="white" style="animation-delay: 0.5s" class="animate-ping" />
+                        </g>
+                        <text x="100" y="195" text-anchor="middle" font-size="14" font-weight="black" fill="#EF4444">SUCCESS: ${extra}/3</text>
+                    </svg>`
+                }
+            },
+            {
+                id: "salt",
+                name: "匠のソルト・シェイク",
+                hint: "逃げるポテトに25回塩を振りかけろ！",
+                action: "tap_move",
+                goal: 25,
+                icon: (p) => `<svg viewBox="0 0 200 200" class="w-44 h-44">
+                    <path d="M55 70 L145 70 L130 185 L70 185 Z" fill="#EF4444" stroke="#991b1b" stroke-width="2" />
+                    <text x="100" y="145" text-anchor="middle" font-size="40" fill="#FDE047" font-weight="900" style="font-family: serif;">M</text>
+                    <g transform="translate(0, -10)">
+                        ${Array.from({length: 5}).map((_, i) => `<rect x="${70+i*13}" y="${30+Math.abs(2-i)*5}" width="8" height="60" fill="#facc15" rx="2" />`).join('')}
+                    </g>
+                    ${p % 2 === 0 ? '<g opacity="0.8"><circle cx="80" cy="20" r="2" fill="white"/><circle cx="110" cy="15" r="2" fill="white"/><circle cx="100" cy="5" r="2" fill="white"/></g>' : ''}
+                </svg>`
+            }
+        ];
+
+        let currentStepIdx = 0;
+        let progress = 0;
+        let frySuccessCount = 0;
+        let lives = 3;
+        let isPressing = false;
+        let lastX = 0;
+        let currentDir = '';
+        let swipeStartX, swipeStartY;
+        let cookTimer = null;
+
+        const stage = document.getElementById('visual-stage');
+        const inputArea = document.getElementById('input-area');
+        const taskName = document.getElementById('task-name');
+        const taskHint = document.getElementById('task-hint');
+        const taskBar = document.getElementById('task-bar');
+        const stepNum = document.getElementById('step-number');
+        const overlay = document.getElementById('overlay');
+        const lifeDisp = document.getElementById('life-container');
+
+        function initStep() {
+            const step = steps[currentStepIdx];
+            progress = 0;
+            if (step.id !== 'fry') frySuccessCount = 0;
+            isPressing = false;
+            updateUI();
+            renderInput();
+        }
+
+        function updateUI() {
+            const step = steps[currentStepIdx];
+            stepNum.textContent = `STEP 0${currentStepIdx + 1}`;
+            taskName.textContent = step.name;
+            taskHint.textContent = step.hint;
+            
+            let visualProgress = (progress / (step.goal || 100)) * 100;
+            if (step.id === 'fry') visualProgress = (frySuccessCount / 3) * 100;
+            taskBar.style.width = `${visualProgress}%`;
+            
+            lifeDisp.textContent = '❤️'.repeat(lives);
+            stage.innerHTML = step.icon(progress, step.id === 'fry' ? frySuccessCount : currentDir);
+        }
+
+        function renderInput() {
+            const step = steps[currentStepIdx];
+            inputArea.innerHTML = '';
+            inputArea.onpointerdown = null;
+
+            if (step.action === 'slide') {
+                const btn = document.createElement('div');
+                btn.className = "w-28 h-28 bg-red-600 rounded-full flex items-center justify-center text-white font-black shadow-xl cursor-pointer active:scale-95 transition-all border-4 border-yellow-400";
+                btn.innerHTML = "<div class='text-center'><span class='block text-xs uppercase'>Hold &</span>WASH</div>";
+                inputArea.appendChild(btn);
+                
+                inputArea.onpointerdown = (e) => { isPressing = true; lastX = e.clientX; updateUI(); };
+                inputArea.onpointerup = () => { isPressing = false; updateUI(); };
+                inputArea.onpointermove = (e) => {
+                    if (isPressing) {
+                        const dist = Math.abs(e.clientX - lastX);
+                        if (dist > 5) {
+                            progress += dist * 0.4;
+                            lastX = e.clientX;
+                            if (progress >= step.goal) showSuccess();
+                            updateUI();
+                        }
+                    }
+                };
+            }
+            else if (step.action === 'swipe') {
+                const dirs = ['↑', '↓', '←', '→'];
+                currentDir = dirs[Math.floor(Math.random() * dirs.length)];
+                updateUI();
+                inputArea.onpointerdown = e => { swipeStartX = e.clientX; swipeStartY = e.clientY; };
+                inputArea.onpointerup = e => {
+                    const dx = e.clientX - swipeStartX;
+                    const dy = e.clientY - swipeStartY;
+                    let detected = '';
+                    if (Math.abs(dx) > Math.abs(dy)) detected = dx > 20 ? '→' : (dx < -20 ? '←' : '');
+                    else detected = dy > 20 ? '↓' : (dy < -20 ? '↑' : '');
+                    
+                    if (detected === currentDir) {
+                        progress += 1;
+                        if (progress >= step.goal) showSuccess();
+                        else {
+                            currentDir = dirs[Math.floor(Math.random() * dirs.length)];
+                            updateUI();
+                        }
+                    } else if (detected !== '') {
+                        fail("方向が違う！");
+                    }
+                };
+            }
+            else if (step.action === 'cook') {
+                const container = document.createElement('div');
+                container.className = "w-full px-6 flex flex-col items-center gap-2";
+                
+                const meterLabel = document.createElement('div');
+                meterLabel.className = "text-[12px] font-black w-full flex justify-between px-1 mb-1";
+                meterLabel.innerHTML = "<span class='text-blue-400'>生</span><span class='text-green-600 bg-green-100 px-2 rounded'>狙え！GOOD!</span><span class='text-red-700'>焦げ</span>";
+                
+                // メーター本体
+                const meter = document.createElement('div');
+                meter.className = "w-full h-12 rounded-2xl fry-color-scale border-4 border-white shadow-xl relative overflow-hidden flex items-center";
+                
+                // 成功ゾーンのハイライト
+                const targetArea = document.createElement('div');
+                targetArea.className = "absolute h-full border-x-4 border-white animate-success-zone flex items-center justify-center";
+                targetArea.style.left = "55%";
+                targetArea.style.width = "20%";
+                targetArea.innerHTML = "<div class='w-full h-full border-2 border-white/50 rounded-sm'></div>";
+                
+                // 針
+                const needle = document.createElement('div');
+                needle.className = "absolute top-0 w-2 h-full bg-red-600 shadow-2xl z-10 border-x border-white/30";
+                needle.id = "cook-needle";
+                
+                meter.appendChild(targetArea);
+                meter.appendChild(needle);
+                
+                const btn = document.createElement('button');
+                btn.className = "w-full py-4 bg-red-600 text-white font-black rounded-2xl shadow-[0_4px_0_0_#991b1b] active:shadow-none active:translate-y-1 transition-all uppercase tracking-widest text-lg mt-2";
+                btn.textContent = "今だ！引き上げ！";
+                
+                container.appendChild(meterLabel);
+                container.appendChild(meter);
+                container.appendChild(btn);
+                inputArea.appendChild(container);
+                
+                progress = 0;
+                cookTimer = setInterval(() => {
+                    progress += 0.008; 
+                    document.getElementById('cook-needle').style.left = `${progress * 100}%`;
+                    if (progress > 1.0) {
+                        clearInterval(cookTimer);
+                        fail("真っ黒焦げだ！");
+                        renderInput();
+                    }
+                    updateUI();
+                }, 50);
+
+                btn.onclick = () => {
+                    clearInterval(cookTimer);
+                    // 成功範囲 0.55〜0.75
+                    if (progress >= 0.55 && progress <= 0.75) {
+                        frySuccessCount++;
+                        if (frySuccessCount >= 3) {
+                            showSuccess("完璧なポテト職人だ！");
+                        } else {
+                            renderInput();
+                        }
+                    } else {
+                        fail(progress < 0.55 ? "まだ冷たいよ..." : "揚げすぎだ！");
+                        renderInput();
+                    }
+                };
+            }
+            else if (step.action === 'tap_move') {
+                const btn = document.createElement('button');
+                btn.className = "absolute w-24 h-24 bg-red-600 rounded-full text-white font-black shadow-lg floating-target flex items-center justify-center border-4 border-yellow-400 active:scale-90 transition-transform";
+                btn.innerHTML = "SALT!";
+                inputArea.appendChild(btn);
+                
+                const move = () => {
+                    const x = 20 + Math.random() * (inputArea.offsetWidth - 120);
+                    const y = 20 + Math.random() * (inputArea.offsetHeight - 120);
+                    btn.style.left = `${x}px`;
+                    btn.style.top = `${y}px`;
+                };
+                move();
+                btn.onclick = (e) => {
+                    e.stopPropagation();
+                    progress += 1;
+                    move();
+                    if (progress >= step.goal) showSuccess();
+                    else updateUI();
+                };
+            }
+        }
+
+        function fail(msg) {
+            lives--;
+            document.getElementById('game-card').classList.add('animate-shake');
+            setTimeout(() => document.getElementById('game-card').classList.remove('animate-shake'), 200);
+            if (lives <= 0) showResult(false, msg);
+            else updateUI();
+        }
+
+        function showSuccess(customMsg) {
+            showResult(true, customMsg || `${steps[currentStepIdx].name} 完了！`);
+        }
+
+        function showResult(isWin, msg) {
+            clearInterval(cookTimer);
+            const resTitle = document.getElementById('result-title');
+            const resEmoji = document.getElementById('result-emoji');
+            const nextBtn = document.getElementById('next-btn');
+            
+            if (isWin) {
+                resTitle.textContent = "Excellent!";
+                resEmoji.textContent = currentStepIdx === steps.length - 1 ? "🍟" : "🏅";
+                nextBtn.textContent = currentStepIdx === steps.length - 1 ? "もう一度遊ぶ" : "次の工程へ";
+            } else {
+                resTitle.textContent = "Game Over";
+                resEmoji.textContent = "🥔";
+                nextBtn.textContent = "リベンジする";
+            }
+            document.getElementById('result-desc').textContent = msg;
+            overlay.classList.remove('hidden');
+        }
+
+        document.getElementById('next-btn').onclick = () => {
+            overlay.classList.add('hidden');
+            if (lives <= 0) {
+                lives = 3;
+                currentStepIdx = 0;
+            } else if (currentStepIdx === steps.length - 1 && (progress >= steps[currentStepIdx].goal || frySuccessCount >= 3)) {
+                currentStepIdx = 0;
+                lives = 3;
+            } else if (currentStepIdx < steps.length - 1) {
+                currentStepIdx++;
+            }
+            initStep();
+        };
+
+        initStep();
+    </script>
+</body>
+</html>
